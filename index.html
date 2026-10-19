@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Supabase Clicker Game</title>
+  <!-- Supabase JS Client CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      text-align: center; 
+      margin-top: 80px; 
+      background-color: #f4f4f9;
+    }
+    .card {
+      background: white;
+      max-width: 400px;
+      margin: 0 auto;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    #click-btn { 
+      font-size: 24px; 
+      padding: 15px 30px; 
+      cursor: pointer; 
+      border-radius: 8px; 
+      border: none;
+      background-color: #3ecf8e;
+      color: white;
+      font-weight: bold;
+      transition: background 0.2s;
+    }
+    #click-btn:hover { background-color: #34b27b; }
+    .score-box { font-size: 56px; margin: 20px 0; font-weight: bold; color: #1e293b; }
+    input { padding: 10px; font-size: 16px; width: 70%; border: 1px solid #ccc; border-radius: 6px; }
+    button.start-btn { padding: 10px 15px; font-size: 16px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h1>⚡ Supabase Clicker ⚡</h1>
+    
+    <!-- Setup / Login Section -->
+    <div id="setup-section">
+      <p>Enter a username to start clicking and saving your score:</p>
+      <input type="text" id="username-input" placeholder="Your username">
+      <br><br>
+      <button class="start-btn" onclick="joinGame()">Start Playing</button>
+    </div>
+
+    <!-- Active Game Section -->
+    <div id="game-section" style="display:none;">
+      <p>Player: <strong id="player-name"></strong></p>
+      <div class="score-box" id="click-count">0</div>
+      <button id="click-btn" onclick="handleClick()">CLICK ME!</button>
+    </div>
+  </div>
+
+  <script>
+    // Initialize Supabase Client
+    const SUPABASE_URL = 'https://sjoqrcgebyxxgvylcrbz.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqb3FyY2dlYnl4eGd2eWxjcmJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzOTc2MDMsImV4cCI6MjEwNzk3MzYwM30.CZwhI89hyU0rScCYq9Cdoha2BqtxcWdt5UJWpRklwf4';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let currentPlayerId = null;
+    let localClickCount = 0;
+
+    async function joinGame() {
+      const username = document.getElementById('username-input').value.trim();
+      if (!username) return alert('Please enter a valid username');
+
+      // Check if user already exists in Supabase
+      let { data: existingPlayer, error: fetchError } = await supabase
+        .from('players')
+        .select('*')
+        .eq('username', username)
+        .maybeSingle();
+
+      if (fetchError) {
+        return alert('Error checking user: ' + fetchError.message);
+      }
+
+      if (existingPlayer) {
+        currentPlayerId = existingPlayer.id;
+        localClickCount = existingPlayer.clicks;
+      } else {
+        // Create a brand new player profile
+        const { data: newPlayer, error: insertError } = await supabase
+          .from('players')
+          .insert([{ username, clicks: 0 }])
+          .select()
+          .single();
+
+        if (insertError) {
+          return alert('Error creating user: ' + insertError.message);
+        }
+        currentPlayerId = newPlayer.id;
+        localClickCount = 0;
+      }
+
+      // Switch views
+      document.getElementById('player-name').innerText = username;
+      document.getElementById('click-count').innerText = localClickCount;
+      document.getElementById('setup-section').style.display = 'none';
+      document.getElementById('game-section').style.display = 'block';
+    }
+
+    async function handleClick() {
+      if (!currentPlayerId) return;
+
+      // 1. Optimistic UI update (updates instantly on screen)
+      localClickCount++;
+      document.getElementById('click-count').innerText = localClickCount;
+
+      // 2. Safely call the Postgres atomic function in the background
+      const { error } = await supabase.rpc('increment_clicks', { 
+        player_id: currentPlayerId 
+      });
+
+      if (error) {
+        console.error('Failed to sync click to server:', error.message);
+      }
+    }
+  </script>
+</body>
+</html>
