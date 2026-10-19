@@ -67,34 +67,20 @@ async function joinGame() {
   if (!username) return alert('Enter a username');
 
   try {
-    let { data: existingPlayer, error: fetchError } = await db
+    // Use upsert: if username already exists, it ignores the insert and returns the existing row safely
+    let { data: player, error } = await db
       .from('players')
-      .select('*')
-      .eq('username', username)
-      .maybeSingle();
+      .upsert([{ username }], { onConflict: 'username' })
+      .select()
+      .single();
 
-    if (fetchError) {
-      alert('Fetch error: ' + fetchError.message);
+    if (error) {
+      alert('Database error: ' + error.message);
       return;
     }
 
-    if (existingPlayer) {
-      currentPlayerId = existingPlayer.id;
-      localClickCount = existingPlayer.clicks;
-    } else {
-      let { data: newPlayer, error: insertError } = await db
-        .from('players')
-        .insert([{ username, clicks: 0 }])
-        .select()
-        .single();
-
-      if (insertError) {
-        alert('Insert error: ' + insertError.message);
-        return;
-      }
-      currentPlayerId = newPlayer.id;
-      localClickCount = 0;
-    }
+    currentPlayerId = player.id;
+    localClickCount = player.clicks;
 
     document.getElementById('player-name').innerText = username;
     document.getElementById('click-count').innerText = localClickCount;
